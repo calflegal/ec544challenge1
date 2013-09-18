@@ -28,6 +28,7 @@ import com.sun.spot.io.j2me.radiogram.*;
 import com.sun.spot.resources.Resources;
 import com.sun.spot.resources.transducers.ITriColorLED;
 import com.sun.spot.resources.transducers.ILightSensor;
+import com.sun.spot.resources.transducers.ITemperatureInput;
 import com.sun.spot.util.Utils;
 import javax.microedition.io.*;
 import javax.microedition.midlet.MIDlet;
@@ -43,15 +44,20 @@ import javax.microedition.midlet.MIDletStateChangeException;
  * modified: Ron Goldman
  */
 public class SensorSampler extends MIDlet {
-
-    private static final int HOST_PORT = 67;
-    private static final int SAMPLE_PERIOD = 10 * 1000;  // in milliseconds
+    
+    private static final int HOST_PORT = 65;
+    private static final int SAMPLE_PERIOD = 500;  // in milliseconds
+    private ITemperatureInput tempSensor = (ITemperatureInput) Resources.lookup(ITemperatureInput.class);
+    //our temperature array for each of the five values.
+    private int[] tempArray = {0,0,0,0,0};
     
     protected void startApp() throws MIDletStateChangeException {
         RadiogramConnection rCon = null;
         Datagram dg = null;
+        long now = System.currentTimeMillis();
         String ourAddress = System.getProperty("IEEE_ADDRESS");
-        ILightSensor lightSensor = (ILightSensor)Resources.lookup(ILightSensor.class);
+        //ILightSensor lightSensor = (ILightSensor)Resources.lookup(ILightSensor.class);
+        
         ITriColorLED led = (ITriColorLED)Resources.lookup(ITriColorLED.class, "LED7");
         
         System.out.println("Starting sensor sampler application on " + ourAddress + " ...");
@@ -71,26 +77,41 @@ public class SensorSampler extends MIDlet {
         
         while (true) {
             try {
-                // Get the current time and sensor reading
-                long now = System.currentTimeMillis();
-                int reading = lightSensor.getValue();
+                //take a sample at every ~.5 second.
+                for (int i=0; i<5; i++) {
                 
+                System.out.println("Sampling " + i);
+                int reading = (int) tempSensor.getFahrenheit();
+                tempArray[i] = reading;
                 // Flash an LED to indicate a sampling event
                 led.setRGB(255, 255, 255);
                 led.setOn();
                 Utils.sleep(50);
                 led.setOff();
 
-                // Package the time and sensor reading into a radio datagram and send it.
-                dg.reset();
-                dg.writeLong(now);
-                dg.writeInt(reading);
-                rCon.send(dg);
+                
 
-                System.out.println("Light value = " + reading);
+              //  System.out.println("Temp value(f) = " + reading);
                 
                 // Go to sleep to conserve battery
+                now = System.currentTimeMillis();
+                //sleep between samples
                 Utils.sleep(SAMPLE_PERIOD - (System.currentTimeMillis() - now));
+                }
+                
+                //after five are done, move on to calculating average
+                float sum = 0;
+                for (int i=0; i<5; i++) {
+                    sum += (float)tempArray[i];
+                }
+                float avg = sum/5;
+                // Package the time and sensor reading into a radio datagram and send it.
+                // Get the current time and sensor reading
+                now = System.currentTimeMillis();
+                dg.reset();
+                dg.writeLong(now);
+                dg.writeFloat(avg);
+                rCon.send(dg);
             } catch (Exception e) {
                 System.err.println("Caught " + e + " while collecting/sending sensor sample.");
             }
@@ -105,4 +126,4 @@ public class SensorSampler extends MIDlet {
         // Only called if startApp throws any exception other than MIDletStateChangeException
     }
 }
- 
+
